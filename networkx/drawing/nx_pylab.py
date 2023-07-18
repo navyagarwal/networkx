@@ -1198,6 +1198,45 @@ def _draw_networkx_edges(
     if arrows in (True, False):
         use_linecollection = not arrows
 
+    # Some kwargs only apply to FancyArrowPatches. Warn users when they use
+    # non-default values for these kwargs when LineCollection is being used
+    # instead of silently ignoring the specified option
+    if use_linecollection and any(
+        [
+            arrowstyle is not None,
+            arrowsize != 10,
+            connectionstyle != "arc3",
+            min_source_margin != 0,
+            min_target_margin != 0,
+        ]
+    ):
+        import warnings
+
+        msg = (
+            "\n\nThe {0} keyword argument is not applicable when drawing edges\n"
+            "with LineCollection.\n\n"
+            "To make this warning go away, either specify `arrows=True` to\n"
+            "force FancyArrowPatches or use the default value for {0}.\n"
+            "Note that using FancyArrowPatches may be slow for large graphs.\n"
+        )
+        if arrowstyle is not None:
+            msg = msg.format("arrowstyle")
+        if arrowsize != 10:
+            msg = msg.format("arrowsize")
+        if connectionstyle != "arc3":
+            msg = msg.format("connectionstyle")
+        if min_source_margin != 0:
+            msg = msg.format("min_source_margin")
+        if min_target_margin != 0:
+            msg = msg.format("min_target_margin")
+        warnings.warn(msg, category=UserWarning, stacklevel=2)
+
+    if arrowstyle == None:
+        if G.is_directed():
+            arrowstyle = "-|>"
+        else:
+            arrowstyle = "-"
+
     if ax is None:
         ax = plt.gca()
 
@@ -1454,19 +1493,28 @@ def _draw_networkx_multigraph_edges(
     if edgelist == None:
         edgelist = list(G.edges())
 
+    num_edges = len(edgelist)
     edge_counts = Counter(edgelist)
+    edge_so_far = dict.fromkeys(edge_counts, 0)
 
     drawnList = []
 
-    for edge, cnt in edge_counts.items():
-        if cnt == 1 and list(G.edges()).count((edge[1], edge[0])) == 0:
+    widthlist = width if hasattr(width, "__iter__") else [width] * num_edges
+    colorlist = (
+        edge_color if hasattr(edge_color, "__iter__") else [edge_color] * num_edges
+    )
+    stylelist = style if hasattr(style, "__iter__") else [style] * num_edges
+    all_edge_info = list(zip(edgelist, widthlist, colorlist, stylelist))
+
+    for edge, ewidth, ecolor, estyle in all_edge_info:
+        if edge_counts[edge] == 1 and list(G.edges()).count((edge[1], edge[0])) == 0:
             drawnEdge = _draw_networkx_edges(
                 G,
                 pos,
                 edgelist=[edge],
-                width=width,
-                edge_color=edge_color,
-                style=style,
+                width=ewidth,
+                edge_color=ecolor,
+                style=estyle,
                 alpha=alpha,
                 arrowstyle=arrowstyle,
                 arrowsize=arrowsize,
@@ -1485,16 +1533,16 @@ def _draw_networkx_multigraph_edges(
             )
             drawnList.extend(drawnEdge)
         else:
-            bend = 0.5 / cnt
+            bend = 0.5 / edge_counts[edge]
             rad = bend
-            for i in range(cnt):
+            for i in range(edge_counts[edge]):
                 drawnEdge = _draw_networkx_edges(
                     G,
                     pos,
                     edgelist=[edge],
-                    width=width,
-                    edge_color=edge_color,
-                    style=style,
+                    width=ewidth,
+                    edge_color=ecolor,
+                    style=estyle,
                     alpha=alpha,
                     arrowstyle=arrowstyle,
                     arrowsize=arrowsize,
@@ -1507,7 +1555,7 @@ def _draw_networkx_multigraph_edges(
                     node_size=node_size,
                     nodelist=nodelist,
                     node_shape=node_shape,
-                    connectionstyle="arc3,rad=" + str(rad)[:3],
+                    connectionstyle="arc3,rad=" + str(i * rad)[:3],
                     min_source_margin=min_source_margin,
                     min_target_margin=min_target_margin,
                 )
